@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="initial-scale=1,user-scalable=no,width=device-width">
+<title>ERNC Chile — TIE 2026</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@9.2.4/ol.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg:#0d1117;
+  --surface:#161b22;
+  --surface2:#1c2330;
+  --border:#30363d;
+  --text:#e6edf3;
+  --muted:#7d8590;
+  --c-eolica:#4fc3f7;
+  --c-minihidro:#4dd0e1;
+  --c-biomasa:#81c784;
+  --c-geotermica:#ff7043;
+  --c-csp:#ffb74d;
+  --c-solar:#fff176;
+}
+
+html,body{width:100%;height:100%;background:var(--bg);font-family:"Segoe UI",Arial,sans-serif;color:var(--text);overflow:hidden}
+
+/* LAYOUT */
+#app{display:grid;grid-template-rows:52px 1fr;grid-template-columns:1fr 360px;height:100vh;width:100vw}
+#header{grid-column:1/-1;display:flex;align-items:center;gap:16px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border);z-index:10}
+#map-wrap{grid-row:2;grid-column:1;position:relative;overflow:hidden}
+#map{width:100%;height:100%}
+#sidebar{grid-row:2;grid-column:2;background:var(--surface);border-left:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
+
+/* HEADER */
+.logo{font-weight:800;font-size:18px;letter-spacing:-.5px;color:#fff}
+.logo span{color:var(--c-solar)}
+.subtitle{font-size:12px;color:var(--muted);font-weight:300}
+.header-pills{display:flex;gap:6px;margin-left:auto}
+.pill{font-size:11px;padding:3px 10px;border-radius:20px;border:1px solid var(--border);color:var(--muted);cursor:pointer;background:transparent;font-family:inherit;transition:all .15s}
+.pill.active{color:#fff;border-color:#fff}
+.pill:hover{background:var(--surface2)}
+
+/* LAYER CONTROLS */
+#layer-controls{padding:14px 16px;border-bottom:1px solid var(--border)}
+.lc-title{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.layer-btn{display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--text);cursor:pointer;font-family:inherit;font-size:13px;margin-bottom:4px;transition:all .15s;text-align:left}
+.layer-btn:hover{background:var(--surface2);border-color:var(--border)}
+.layer-btn.active{border-color:var(--border);background:var(--surface2)}
+.layer-btn.inactive{opacity:.35}
+.lbullet{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.lcheck{margin-left:auto;font-size:12px}
+.layer-btn.active .lcheck{color:var(--text)}
+.layer-btn.inactive .lcheck{color:transparent}
+
+/* INFO PANEL */
+#info-panel{flex:1;padding:16px}
+.info-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted);text-align:center;gap:8px}
+.info-empty svg{opacity:.2}
+.info-empty p{font-size:13px;line-height:1.7}
+
+.info-card{animation:fadein .2s ease}
+@keyframes fadein{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+.info-tipo-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:3px 10px;border-radius:20px;margin-bottom:10px;font-weight:500}
+.info-nombre{font-size:16px;font-weight:700;line-height:1.3;margin-bottom:4px}
+.info-region{font-size:12px;color:var(--muted);margin-bottom:10px}
+.info-desc{font-size:12px;line-height:1.7;color:#c9d1d9;padding:10px 12px;background:var(--surface2);border-radius:6px;margin-bottom:14px;border-left:2px solid var(--border)}
+
+.estado-badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:10px;margin-bottom:12px;font-weight:500}
+.est-Operativo{background:#1a3a2a;color:#4ade80;border:1px solid #166534}
+.est-construccion{background:#312107;color:#fbbf24;border:1px solid #92400e}
+.est-Proyectado{background:#1e1b4b;color:#a5b4fc;border:1px solid #3730a3}
+.est-otro{background:#1c2333;color:#7d8590;border:1px solid #30363d}
+
+/* DIAGRAMA DE BARRAS */
+.bars-title{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.bar-group{margin-bottom:10px}
+.bar-meta{display:flex;justify-content:space-between;margin-bottom:4px}
+.bar-lbl{font-size:11px;color:var(--muted)}
+.bar-num{font-size:11px;font-weight:500;color:var(--text)}
+.bar-track{height:7px;background:rgba(255,255,255,.07);border-radius:4px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;transition:width .5s cubic-bezier(.4,0,.2,1)}
+
+/* CAMPOS EXTRA */
+.extra-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.extra-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.extra-label{font-size:10px;color:var(--muted);margin-bottom:2px}
+.extra-val{font-size:13px;font-weight:500}
+
+/* TOOLTIP */
+.map-tooltip{position:absolute;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-size:12px;pointer-events:none;transform:translate(-50%,-115%);white-space:nowrap;display:none;z-index:100}
+.map-tooltip strong{font-size:13px;display:block;margin-bottom:2px}
+.map-tooltip small{color:var(--muted)}
+
+/* SCROLLBAR */
+#sidebar::-webkit-scrollbar{width:4px}
+#sidebar::-webkit-scrollbar-track{background:transparent}
+#sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* OL overrides */
+.ol-attribution{background:rgba(13,17,23,.75)!important;color:var(--muted)!important;font-size:10px!important}
+.ol-attribution a{color:var(--muted)!important}
+.ol-zoom{top:auto!important;bottom:24px!important;left:auto!important;right:16px!important}
+.ol-zoom button{background:var(--surface)!important;color:var(--text)!important;border:1px solid var(--border)!important;border-radius:4px!important;font-size:16px!important;width:28px!important;height:28px!important}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header id="header">
+    <div>
+      <div class="logo">ERNC<span>.</span>Chile</div>
+      <div class="subtitle">Taller de Instalaciones de Energía 2026</div>
+    </div>
+    <div class="header-pills">
+      <button class="pill active" onclick="setBasemap('osm',this)">OSM</button>
+      <button class="pill" onclick="setBasemap('satellite',this)">Satélite</button>
+      <button class="pill" onclick="setBasemap('topo',this)">Topo</button>
+    </div>
+  </header>
+
+  <div id="map-wrap">
+    <div id="map"></div>
+    <div id="tooltip" class="map-tooltip">
+      <strong id="tt-name"></strong>
+      <small id="tt-sub"></small>
+    </div>
+  </div>
+
+  <aside id="sidebar">
+    <div id="layer-controls">
+      <div class="lc-title">Capas ERNC</div>
+      <button class="layer-btn active" data-layer="eolica" onclick="toggleLayer(this)">
+        <div class="lbullet" style="background:var(--c-eolica)"></div>
+        <span>Eólica</span><span class="lcheck">✓</span>
+      </button>
+      <button class="layer-btn active" data-layer="minihidro" onclick="toggleLayer(this)">
+        <div class="lbullet" style="background:var(--c-minihidro)"></div>
+        <span>Mini Hidráulica</span><span class="lcheck">✓</span>
+      </button>
+      <button class="layer-btn active" data-layer="biomasa" onclick="toggleLayer(this)">
+        <div class="lbullet" style="background:var(--c-biomasa)"></div>
+        <span>Biomasa</span><span class="lcheck">✓</span>
+      </button>
+      <button class="layer-btn active" data-layer="geotermica" onclick="toggleLayer(this)">
+        <div class="lbullet" style="background:var(--c-geotermica)"></div>
+        <span>Geotérmica</span><span class="lcheck">✓</span>
+      </button>
+      <button class="layer-btn active" data-layer="csp" onclick="toggleLayer(this)">
+        <div class="lbullet" style="background:var(--c-csp)"></div>
+        <span>CSP Solar</span><span class="lcheck">✓</span>
+      </button>
+      <button class="layer-btn active" data-layer="solar" onclick="toggleLayer(this)">
+        <div class="lbullet" style="background:var(--c-solar)"></div>
+        <span>Solar Fotovoltaica</span><span class="lcheck">✓</span>
+      </button>
+    </div>
+
+    <div id="info-panel">
+      <div class="info-empty" id="info-empty">
+        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+          <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
+        </svg>
+        <p>Haz clic en cualquier<br>marcador del mapa para<br>ver sus datos y potenciales</p>
+      </div>
+      <div id="info-content" style="display:none"></div>
+    </div>
+  </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ol@9.2.4/dist/ol.js"></script>
+<script>
+var ERNC_LAYERS = {"biomasa":{"type":"FeatureCollection","name":"biomasa_1","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"nombre":"Planta Biomasa Arauco - Horcones","region":"Biob\u00edo","potencial bruto (MW)":3500.0,"potencial tecnico (MW)":440.0,"potencial economico (MW)":350.0,"estado":"Operativo","empresa":"Celulosa Arauco","tipo":"Biomasa","descripcion":"Residuos forestales de pino y eucaliptus. Cogeneraci\u00f3n 160 MW t\u00e9rmicos + 40 MW el\u00e9ctricos","combustible":"Residuos forestales","capacidad (MW)":40.0},"geometry":{"type":"Point","coordinates":[-73.3,-37.28]}},{"type":"Feature","properties":{"nombre":"Planta Biomasa CMPC - Planta Pac\u00edfico","region":"Biob\u00edo","potencial bruto (MW)":2800.0,"potencial tecnico (MW)":350.0,"potencial economico (MW)":280.0,"estado":"Operativo","empresa":"CMPC","tipo":"Biomasa","descripcion":"Licor negro y corteza de pino. Planta de celulosa con autogeneraci\u00f3n el\u00e9ctrica","combustible":"Licor negro / corteza","capacidad (MW)":35.0},"geometry":{"type":"Point","coordinates":[-72.6,-37.5]}},{"type":"Feature","properties":{"nombre":"Planta Biog\u00e1s Maip\u00fa - RSD","region":"Metropolitana","potencial bruto (MW)":800.0,"potencial tecnico (MW)":100.0,"potencial economico (MW)":80.0,"estado":"Operativo","empresa":"Lontu\u00e9","tipo":"Biomasa","descripcion":"Biog\u00e1s de relleno sanitario Lo Err\u00e1zuriz. Fracci\u00f3n biodegradable de RSU","combustible":"Biog\u00e1s - RSU","capacidad (MW)":6.5},"geometry":{"type":"Point","coordinates":[-70.85,-33.5]}},{"type":"Feature","properties":{"nombre":"Planta Biomasa Los Lagos - Valdivia","region":"Los R\u00edos","potencial bruto (MW)":2200.0,"potencial tecnico (MW)":275.0,"potencial economico (MW)":220.0,"estado":"En construcci\u00f3n","empresa":"Watts / Forestal Mininco","tipo":"Biomasa","descripcion":"Zona forestal sur de Chile. Le\u00f1a y astillas de eucaliptus. Precipitaci\u00f3n > 2000 mm/a\u00f1o","combustible":"Astillas forestales","capacidad (MW)":22.0},"geometry":{"type":"Point","coordinates":[-73.1,-39.8]}},{"type":"Feature","properties":{"nombre":"Planta Biog\u00e1s Agroindustrial Temuco","region":"La Araucan\u00eda","potencial bruto (MW)":1200.0,"potencial tecnico (MW)":150.0,"potencial economico (MW)":120.0,"estado":"En evaluaci\u00f3n","empresa":"AgroEnerg\u00eda Sur","tipo":"Biomasa","descripcion":"Purines porcinos y efluentes de mataderos. Digesti\u00f3n anaerobia para generaci\u00f3n el\u00e9ctrica","combustible":"Purines / efluentes agr\u00edcolas","capacidad (MW)":8.0},"geometry":{"type":"Point","coordinates":[-72.6,-38.73]}}]},"csp":{"type":"FeatureCollection","name":"csp_2","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"nombre":"Planta CSP Cerro Dominador - Mar\u00eda Elena","region":"Antofagasta","potencial bruto (MW)":25000.0,"potencial tecnico (MW)":1500.0,"potencial economico (MW)":450.0,"estado":"Operativo","empresa":"Cerro Dominador / EDF","tipo":"CSP","descripcion":"Primera planta termosolar de Am\u00e9rica Latina. Torre central con 110 MW CSP + 100 MW FV. DNI: 3200 kWh/m\u00b2/a\u00f1o. Almacenamiento 17.5 h en sales fundidas","kwh/m2/a\u00f1o":3200.0,"almacenamiento (horas)":17.5,"tecnologia":"Torre central + sales fundidas"},"geometry":{"type":"Point","coordinates":[-69.65,-22.48]}},{"type":"Feature","properties":{"nombre":"Zona CSP Potencial - Atacama Norte","region":"Atacama","potencial bruto (MW)":30000.0,"potencial tecnico (MW)":1800.0,"potencial economico (MW)":500.0,"estado":"Proyectado","empresa":"Abengoa / Iberdrola","tipo":"CSP","descripcion":"Corredor solar Atacama norte. DNI m\u00e1ximo del planeta >3400 kWh/m\u00b2/a\u00f1o. Sin nubosidad >320 d\u00edas/a\u00f1o. Aptitud para canal parab\u00f3lico y torre Fresnel","kwh/m2/a\u00f1o":3400.0,"almacenamiento (horas)":12.0,"tecnologia":"Canal parab\u00f3lico"},"geometry":{"type":"Point","coordinates":[-69.2,-24.5]}},{"type":"Feature","properties":{"nombre":"Proyecto CSP Copiap\u00f3 Solar","region":"Atacama","potencial bruto (MW)":18000.0,"potencial tecnico (MW)":1100.0,"potencial economico (MW)":310.0,"estado":"En evaluaci\u00f3n","empresa":"SolarReserve","tipo":"CSP","descripcion":"Valley of the Sun - Copiap\u00f3. 260 MW torre heliostato. DNI promedio anual 3100 kWh/m\u00b2/a\u00f1o","kwh/m2/a\u00f1o":3100.0,"almacenamiento (horas)":14.0,"tecnologia":"Torre heliostato"},"geometry":{"type":"Point","coordinates":[-70.35,-27.2]}},{"type":"Feature","properties":{"nombre":"Zona CSP Potencial - Tarapac\u00e1 Interior","region":"Tarapac\u00e1","potencial bruto (MW)":22000.0,"potencial tecnico (MW)":1300.0,"potencial economico (MW)":380.0,"estado":"En exploraci\u00f3n","empresa":"Acciona / ENGIE","tipo":"CSP","descripcion":"Pampa del Tamarugal. Llanura des\u00e9rtica con DNI >3200 kWh/m\u00b2/a\u00f1o. Terreno plano ideal para heli\u00f3statos. Sin sombras orogr\u00e1ficas","kwh/m2/a\u00f1o":3200.0,"almacenamiento (horas)":10.0,"tecnologia":"Fresnel lineal"},"geometry":{"type":"Point","coordinates":[-69.5,-20.5]}}]},"eolica":{"type":"FeatureCollection","name":"eolica_3","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"nombre":"Parque E\u00f3lico Atacama I","region":"Atacama","potencial bruto (MW)":9000.0,"potencial tecnico (MW)":1100.0,"potencial economico (MW)":550.0,"estado":"Operativo","empresa":"Acciona Energ\u00eda","tipo":"E\u00f3lica","descripcion":"Zona de alta velocidad de viento en la costa de Atacama, >8 m/s promedio anual","factor planta":0.42},"geometry":{"type":"Point","coordinates":[-70.65,-27.35]}},{"type":"Feature","properties":{"nombre":"Parque E\u00f3lico Coquimbo - Los Cururos","region":"Coquimbo","potencial bruto (MW)":7000.0,"potencial tecnico (MW)":900.0,"potencial economico (MW)":430.0,"estado":"Operativo","empresa":"Enel Green Power","tipo":"E\u00f3lica","descripcion":"Corredor e\u00f3lico costero entre Ovalle y La Serena","factor planta":0.38},"geometry":{"type":"Point","coordinates":[-71.2,-30.1]}},{"type":"Feature","properties":{"nombre":"Parque E\u00f3lico Biob\u00edo - Punta Palmeras","region":"Biob\u00edo","potencial bruto (MW)":5500.0,"potencial tecnico (MW)":700.0,"potencial economico (MW)":320.0,"estado":"En construcci\u00f3n","empresa":"Statkraft","tipo":"E\u00f3lica","descripcion":"Vientos costeros del Pac\u00edfico Sur, velocidad media 7.5 m/s","factor planta":0.35},"geometry":{"type":"Point","coordinates":[-73.5,-37.2]}},{"type":"Feature","properties":{"nombre":"Parque E\u00f3lico Valpara\u00edso - Totoral","region":"Valpara\u00edso","potencial bruto (MW)":4800.0,"potencial tecnico (MW)":600.0,"potencial economico (MW)":290.0,"estado":"Operativo","empresa":"AES Gener","tipo":"E\u00f3lica","descripcion":"Cord\u00f3n e\u00f3lico litoral central, primera planta e\u00f3lica a gran escala de Chile","factor planta":0.34},"geometry":{"type":"Point","coordinates":[-71.75,-32.8]}},{"type":"Feature","properties":{"nombre":"Parque E\u00f3lico Magallanes - Cabo Negro","region":"Magallanes","potencial bruto (MW)":8500.0,"potencial tecnico (MW)":1200.0,"potencial economico (MW)":600.0,"estado":"Proyectado","empresa":"ENAP / Andes Mining & Energy","tipo":"E\u00f3lica","descripcion":"Zona de vientos patag\u00f3nicos con velocidades sobre 11 m/s. Proyecto Haru Oni (H2 verde)","factor planta":0.52},"geometry":{"type":"Point","coordinates":[-70.9,-52.8]}},{"type":"Feature","properties":{"nombre":"Parque E\u00f3lico La Araucan\u00eda","region":"La Araucan\u00eda","potencial bruto (MW)":3200.0,"potencial tecnico (MW)":400.0,"potencial economico (MW)":200.0,"estado":"En evaluaci\u00f3n","empresa":"Colb\u00fan","tipo":"E\u00f3lica","descripcion":"Precordillera andina, vientos constantes del SW","factor planta":0.3},"geometry":{"type":"Point","coordinates":[-72.4,-38.5]}}]},"geotermica":{"type":"FeatureCollection","name":"geotermica_4","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"nombre":"Campo Geot\u00e9rmico Cerro Pabell\u00f3n","region":"Antofagasta","potencial bruto (MW)":3500.0,"potencial tecnico (MW)":400.0,"potencial economico (MW)":370.0,"estado":"Operativo","empresa":"Enel Green Power / ENAP","tipo":"Geot\u00e9rmica","descripcion":"Primera planta geot\u00e9rmica de Am\u00e9rica del Sur. Altiplano de Ollag\u00fce a 4500 msnm. Temperatura de yacimiento: 260\u00b0C","temperatura yacimiento (\u00b0C)":260.0,"profundidad pozo (m)":2500.0},"geometry":{"type":"Point","coordinates":[-68.18,-21.92]}},{"type":"Feature","properties":{"nombre":"Campo Geot\u00e9rmico Tatio","region":"Antofagasta","potencial bruto (MW)":4200.0,"potencial tecnico (MW)":500.0,"potencial economico (MW)":460.0,"estado":"En exploraci\u00f3n","empresa":"Geot\u00e9rmica del Norte","tipo":"Geot\u00e9rmica","descripcion":"G\u00e9iseres del Tatio. Mayor campo geot\u00e9rmico del hemisferio sur. Alta salinidad requiere tecnolog\u00eda binaria","temperatura yacimiento (\u00b0C)":180.0,"profundidad pozo (m)":1800.0},"geometry":{"type":"Point","coordinates":[-68.0,-22.33]}},{"type":"Feature","properties":{"nombre":"Campo Geot\u00e9rmico Apacheta - Polloquere","region":"Tarapac\u00e1","potencial bruto (MW)":2800.0,"potencial tecnico (MW)":320.0,"potencial economico (MW)":290.0,"estado":"En exploraci\u00f3n","empresa":"Altiplano Geothermal","tipo":"Geot\u00e9rmica","descripcion":"Altiplano de Colchane. Sistema de alta entalp\u00eda. Gradiente geot\u00e9rmico elevado por subducci\u00f3n de Nazca","temperatura yacimiento (\u00b0C)":240.0,"profundidad pozo (m)":2200.0},"geometry":{"type":"Point","coordinates":[-68.7,-19.15]}},{"type":"Feature","properties":{"nombre":"Campo Geot\u00e9rmico Tolhuaca","region":"La Araucan\u00eda","potencial bruto (MW)":2000.0,"potencial tecnico (MW)":180.0,"potencial economico (MW)":160.0,"estado":"En exploraci\u00f3n","empresa":"Chevron Geothermal","tipo":"Geot\u00e9rmica","descripcion":"Volc\u00e1n Tolhuaca. Sistema hidrotermal de alta temperatura. Cordillera volc\u00e1nica sur","temperatura yacimiento (\u00b0C)":300.0,"profundidad pozo (m)":3000.0},"geometry":{"type":"Point","coordinates":[-71.65,-38.32]}},{"type":"Feature","properties":{"nombre":"Campo Geot\u00e9rmico Mariposa - Villarrica","region":"La Araucan\u00eda","potencial bruto (MW)":1800.0,"potencial tecnico (MW)":160.0,"potencial economico (MW)":145.0,"estado":"En evaluaci\u00f3n","empresa":"GeoGlobal Energy","tipo":"Geot\u00e9rmica","descripcion":"Flancos del volc\u00e1n Villarrica. Temperatura superficial de suelo sobre 80\u00b0C. PVGZ activa","temperatura yacimiento (\u00b0C)":220.0,"profundidad pozo (m)":2000.0},"geometry":{"type":"Point","coordinates":[-71.93,-39.42]}}]},"minihidro":{"type":"FeatureCollection","name":"Minihidraullica_5","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"nombre":"Central Mini Hidro R\u00edo Puelo","region":"Los Lagos","potencial bruto (MW)":3800.0,"potencial tecnico (MW)":480.0,"potencial economico (MW)":290.0,"estado":"Operativo","empresa":"Colb\u00fan","tipo":"Mini Hidro","descripcion":"R\u00edo Puelo, cuenca del Reloncav\u00ed. Caudal medio 250 m\u00b3/s. Salto neto: 45 m","capacidad instalada (MW)":18.0},"geometry":{"type":"Point","coordinates":[-72.28,-41.65]}},{"type":"Feature","properties":{"nombre":"Central Mini Hidro R\u00edo Tolt\u00e9n","region":"La Araucan\u00eda","potencial bruto (MW)":2900.0,"potencial tecnico (MW)":360.0,"potencial economico (MW)":220.0,"estado":"Operativo","empresa":"Endesa Chile","tipo":"Mini Hidro","descripcion":"Cuenca del Tolt\u00e9n, pluvio-nival. Capacidad < 20 MW","capacidad instalada (MW)":15.5},"geometry":{"type":"Point","coordinates":[-72.6,-38.8]}},{"type":"Feature","properties":{"nombre":"Central Mini Hidro R\u00edo Ays\u00e9n - Ma\u00f1ihuales","region":"Ays\u00e9n","potencial bruto (MW)":5200.0,"potencial tecnico (MW)":650.0,"potencial economico (MW)":380.0,"estado":"En evaluaci\u00f3n","empresa":"Pacific Hydro","tipo":"Mini Hidro","descripcion":"Sistemas fluviales de la Patagonia norte. Alta pluviosidad >3000 mm/a\u00f1o","capacidad instalada (MW)":19.8},"geometry":{"type":"Point","coordinates":[-72.15,-45.3]}},{"type":"Feature","properties":{"nombre":"Central Mini Hidro R\u00edo Maule - San Clemente","region":"Maule","potencial bruto (MW)":2100.0,"potencial tecnico (MW)":260.0,"potencial economico (MW)":160.0,"estado":"Operativo","empresa":"Colb\u00fan","tipo":"Mini Hidro","descripcion":"Afluentes del Maule en precordillera. Caudal nivo-pluvial","capacidad instalada (MW)":12.0},"geometry":{"type":"Point","coordinates":[-71.0,-35.55]}},{"type":"Feature","properties":{"nombre":"Central Mini Hidro R\u00edo Biob\u00edo - Quilaco","region":"Biob\u00edo","potencial bruto (MW)":3100.0,"potencial tecnico (MW)":390.0,"potencial economico (MW)":240.0,"estado":"Operativo","empresa":"AES Gener","tipo":"Mini Hidro","descripcion":"Subcuencas del Alto Biob\u00edo. Caudal aprovechable 40-80 m\u00b3/s","capacidad instalada (MW)":19.2},"geometry":{"type":"Point","coordinates":[-71.45,-37.65]}},{"type":"Feature","properties":{"nombre":"Central Mini Hidro R\u00edo Los R\u00edos - Futrono","region":"Los R\u00edos","potencial bruto (MW)":1800.0,"potencial tecnico (MW)":220.0,"potencial economico (MW)":135.0,"estado":"En construcci\u00f3n","empresa":"Generadora Metropolitana","tipo":"Mini Hidro","descripcion":"R\u00edo Huanehue y afluentes del Lago Ranco. R\u00e9gimen pluvial","capacidad instalada (MW)":10.0},"geometry":{"type":"Point","coordinates":[-72.4,-40.15]}}]},"solar":{"type":"FeatureCollection","name":"solarfotovoltaica_6","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"nombre":"Planta FV El Romero Solar","region":"Atacama","potencial bruto (MW)":280.0,"potencial tecnico (MW)":140.0,"potencial economico (MW)":140.0,"estado":"Operativo","empresa":"Acciona Energ\u00eda","tipo":"Solar FV","descripcion":"246 MWp instalados. Mayor planta FV de Chile y Sudam\u00e9rica en su inauguraci\u00f3n (2016). GHI: 2450 kWh/m\u00b2/a\u00f1o","potencia instalada (MWp)":246.0,"kwh/m2/a\u00f1o":2450.0,"tecnologia":"Paneles monocristalinos con seguidor 1 eje"},"geometry":{"type":"Point","coordinates":[-71.0,-28.0]}},{"type":"Feature","properties":{"nombre":"Planta FV Granja Solar - Antofagasta","region":"Antofagasta","potencial bruto (MW)":200.0,"potencial tecnico (MW)":100.0,"potencial economico (MW)":100.0,"estado":"Operativo","empresa":"Enel Green Power","tipo":"Solar FV","descripcion":"196 MWp. Desierto de Atacama. GHI > 2600 kWh/m\u00b2/a\u00f1o. M\u00f3dulos bifaciales","potencia instalada (MWp)":196.0,"kwh/m2/a\u00f1o":2600.0,"tecnologia":"M\u00f3dulos bifaciales con seguidor 2 ejes"},"geometry":{"type":"Point","coordinates":[-69.8,-23.55]}},{"type":"Feature","properties":{"nombre":"Planta FV Diego de Almagro","region":"Atacama","potencial bruto (MW)":140.0,"potencial tecnico (MW)":70.0,"potencial economico (MW)":70.0,"estado":"Operativo","empresa":"Grupo Vial","tipo":"Solar FV","descripcion":"36 MW. Sistema FV domiciliario escalado. Ejemplo de autoconsumo industrial minero","potencia instalada (MWp)":36.0,"kwh/m2/a\u00f1o":2380.0,"tecnologia":"Paneles policristalinos fijos"},"geometry":{"type":"Point","coordinates":[-70.05,-26.38]}},{"type":"Feature","properties":{"nombre":"Planta FV Domiciliaria - Santiago RM","region":"Metropolitana","potencial bruto (MW)":120.0,"potencial tecnico (MW)":60.0,"potencial economico (MW)":60.0,"estado":"Operativo","empresa":"Diversas (PMGD/PMG)","tipo":"Solar FV","descripcion":"Parque de sistemas FV domiciliarios <10 kWp en la RM bajo Ley 20.936 Net Metering. GHI: 1900 kWh/m\u00b2/a\u00f1o","potencia instalada (MWp)":85.0,"kwh/m2/a\u00f1o":1900.0,"tecnologia":"Sistemas FV residenciales Net Metering"},"geometry":{"type":"Point","coordinates":[-70.65,-33.45]}},{"type":"Feature","properties":{"nombre":"Planta FV Atacama 1 - Calama","region":"Antofagasta","potencial bruto (MW)":200.0,"potencial tecnico (MW)":100.0,"potencial economico (MW)":100.0,"estado":"Operativo","empresa":"SunEdison / ENGIE","tipo":"Solar FV","descripcion":"100 MW. GHI 2700 kWh/m\u00b2/a\u00f1o. Contrato PPA con CODELCO. Referente en autoconsumo minero con FV","potencia instalada (MWp)":100.0,"kwh/m2/a\u00f1o":2700.0,"tecnologia":"FV con seguidor 1 eje - uso minero"},"geometry":{"type":"Point","coordinates":[-68.6,-22.45]}},{"type":"Feature","properties":{"nombre":"Planta FV Coquimbo - Los Molles","region":"Coquimbo","potencial bruto (MW)":70.0,"potencial tecnico (MW)":35.0,"potencial economico (MW)":35.0,"estado":"Operativo","empresa":"Sonnedix","tipo":"Solar FV","descripcion":"30 MW. Transici\u00f3n sur hacia zona de menor irradiaci\u00f3n. GHI: 2100 kWh/m\u00b2/a\u00f1o. Referencia t\u00e9cnica para instalaciones domiciliarias en zona central","potencia instalada (MWp)":30.0,"kwh/m2/a\u00f1o":2100.0,"tecnologia":"Paneles monocristalinos - PERC"},"geometry":{"type":"Point","coordinates":[-71.5,-31.9]}}]}};
+
+const COLORS = {
+  eolica:'#4fc3f7', minihidro:'#4dd0e1', biomasa:'#81c784',
+  geotermica:'#ff7043', csp:'#ffb74d', solar:'#fff176'
+};
+const TIPOS = {
+  eolica:'Eólica', minihidro:'Mini Hidro', biomasa:'Biomasa',
+  geotermica:'Geotérmica', csp:'CSP Solar', solar:'Solar FV'
+};
+const SHAPES = {
+  eolica:'triangle', minihidro:'triangle', biomasa:'circle',
+  geotermica:'diamond', csp:'star', solar:'square'
+};
+
+// ── ESTILOS ──────────────────────────────────────────
+function makeStyle(color, shape, size, selected) {
+  size = size || 9;
+  const stroke = new ol.style.Stroke({
+    color: selected ? '#fff' : 'rgba(0,0,0,.5)',
+    width: selected ? 2 : 1
+  });
+  const fill = new ol.style.Fill({color});
+  if (shape === 'circle')
+    return new ol.style.Style({image: new ol.style.Circle({radius:size, fill, stroke})});
+  if (shape === 'square')
+    return new ol.style.Style({image: new ol.style.RegularShape({points:4, radius:size, angle:Math.PI/4, fill, stroke})});
+  if (shape === 'triangle')
+    return new ol.style.Style({image: new ol.style.RegularShape({points:3, radius:size, fill, stroke})});
+  if (shape === 'diamond')
+    return new ol.style.Style({image: new ol.style.RegularShape({points:4, radius:size, angle:0, fill, stroke})});
+  if (shape === 'star')
+    return new ol.style.Style({image: new ol.style.RegularShape({points:5, radius:size, radius2:size*0.44, fill, stroke})});
+  return new ol.style.Style({image: new ol.style.Circle({radius:size, fill, stroke})});
+}
+
+// ── BASEMAPS ─────────────────────────────────────────
+const osmLayer = new ol.layer.Tile({source: new ol.source.OSM()});
+const satLayer = new ol.layer.Tile({
+  visible:false,
+  source: new ol.source.XYZ({
+    url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attributions:'© Esri World Imagery'
+  })
+});
+const topoLayer = new ol.layer.Tile({
+  visible:false,
+  source: new ol.source.XYZ({
+    url:'https://tile.opentopomap.org/{z}/{x}/{y}.png',
+    attributions:'© OpenTopoMap'
+  })
+});
+const basemapMap = {osm:osmLayer, satellite:satLayer, topo:topoLayer};
+
+// ── CAPAS ERNC ───────────────────────────────────────
+const fmt = new ol.format.GeoJSON();
+const erncLayers = {};
+
+Object.keys(ERNC_LAYERS).forEach(key => {
+  const color = COLORS[key];
+  const shape = SHAPES[key];
+  const features = fmt.readFeatures(ERNC_LAYERS[key], {
+    dataProjection:'EPSG:4326', featureProjection:'EPSG:3857'
+  });
+  features.forEach(f => f.set('_key', key));
+  const src = new ol.source.Vector();
+  src.addFeatures(features);
+  erncLayers[key] = new ol.layer.Vector({
+    source: src,
+    style: f => makeStyle(color, shape, 9, false)
+  });
+});
+
+// ── MAPA ─────────────────────────────────────────────
+const map = new ol.Map({
+  target: 'map',
+  layers: [osmLayer, satLayer, topoLayer, ...Object.values(erncLayers)],
+  view: new ol.View({
+    center: ol.proj.fromLonLat([-70.6, -37]),
+    zoom: 5, minZoom: 4, maxZoom: 18
+  }),
+  controls: ol.control.defaults.defaults({rotate:false})
+});
+
+// ── CLICK ────────────────────────────────────────────
+let selFeat = null, selKey = null;
+
+map.on('click', function(e) {
+  let hit = false;
+  map.forEachFeatureAtPixel(e.pixel, function(feat) {
+    if (hit) return;
+    const key = feat.get('_key');
+    if (!key) return;
+    hit = true;
+
+    // Resetear estilo anterior
+    if (selFeat && selKey) {
+      const lyr = erncLayers[selKey];
+      lyr.setStyle(f => makeStyle(COLORS[selKey], SHAPES[selKey], 9, false));
+    }
+    // Estilo seleccionado
+    erncLayers[key].setStyle(f =>
+      makeStyle(COLORS[key], SHAPES[key], f === feat ? 13 : 9, f === feat)
+    );
+    selFeat = feat; selKey = key;
+    showInfo(feat.getProperties(), key);
+  });
+
+  if (!hit) {
+    if (selFeat && selKey) {
+      erncLayers[selKey].setStyle(f => makeStyle(COLORS[selKey], SHAPES[selKey], 9, false));
+      selFeat = null; selKey = null;
+    }
+    document.getElementById('info-empty').style.display = 'flex';
+    document.getElementById('info-content').style.display = 'none';
+  }
+});
+
+// ── HOVER ────────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+map.on('pointermove', function(e) {
+  let found = false;
+  map.forEachFeatureAtPixel(e.pixel, function(feat) {
+    if (found) return;
+    const key = feat.get('_key');
+    if (!key) return;
+    found = true;
+    const p = feat.getProperties();
+    document.getElementById('tt-name').textContent = p['nombre'];
+    document.getElementById('tt-sub').textContent = TIPOS[key] + ' · ' + p['region'];
+    tooltip.style.display = 'block';
+    tooltip.style.left = e.pixel[0] + 'px';
+    tooltip.style.top  = e.pixel[1] + 'px';
+  });
+  if (!found) tooltip.style.display = 'none';
+  document.getElementById('map').style.cursor = found ? 'pointer' : '';
+});
+
+// ── PANEL INFO + DIAGRAMA DE BARRAS ──────────────────
+function estadoClass(estado) {
+  if (!estado) return 'est-otro';
+  if (estado === 'Operativo') return 'est-Operativo';
+  if (estado === 'Proyectado') return 'est-Proyectado';
+  if (estado.includes('construc') || estado.includes('Construc')) return 'est-construccion';
+  return 'est-otro';
+}
+
+function showInfo(props, key) {
+  const color    = COLORS[key];
+  const tipo     = TIPOS[key];
+  const bruto    = props['potencial bruto (MW)']    || 0;
+  const tecnico  = props['potencial tecnico (MW)']   || 0;
+  const economico= props['potencial economico (MW)'] || 0;
+  const max      = bruto || 1;
+
+  // Campos extra específicos por tipo
+  const extras = [];
+  if (props['factor planta']            != null) extras.push(['Factor planta',       (props['factor planta']*100).toFixed(0)+'%']);
+  if (props['capacidad (MW)']           != null) extras.push(['Cap. instalada',      props['capacidad (MW)']+' MW']);
+  if (props['capacidad instalada (MW)'] != null) extras.push(['Cap. instalada',      props['capacidad instalada (MW)']+' MW']);
+  if (props['temperatura yacimiento (°C)'] != null) extras.push(['T° yacimiento',   props['temperatura yacimiento (°C)']+'°C']);
+  if (props['profundidad pozo (m)']     != null) extras.push(['Prof. pozo',          props['profundidad pozo (m)']+' m']);
+  if (props['kwh/m2/año']              != null) extras.push(['DNI / GHI',           props['kwh/m2/año']+' kWh/m²/a']);
+  if (props['almacenamiento (horas)']   != null) extras.push(['Almacenamiento',      props['almacenamiento (horas)']+' h']);
+  if (props['tecnologia'])                        extras.push(['Tecnología',          props['tecnologia']]);
+  if (props['combustible'])                       extras.push(['Combustible',         props['combustible']]);
+  if (props['potencia instalada (MWp)'] != null) extras.push(['Potencia inst.',      props['potencia instalada (MWp)']+' MWp']);
+
+  const extraHTML = extras.length
+    ? '<div class="extra-grid">' + extras.map(([l,v]) =>
+        `<div class="extra-card"><div class="extra-label">${l}</div><div class="extra-val">${v}</div></div>`
+      ).join('') + '</div>'
+    : '';
+
+  function bar(label, val, opacity) {
+    const pct = (val/max*100).toFixed(1);
+    return `<div class="bar-group">
+      <div class="bar-meta">
+        <span class="bar-lbl">${label}</span>
+        <span class="bar-num">${val.toLocaleString('es-CL')} MW</span>
+      </div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${pct}%;background:${color};opacity:${opacity}"></div>
+      </div>
+    </div>`;
+  }
+
+  document.getElementById('info-empty').style.display = 'none';
+  const cont = document.getElementById('info-content');
+  cont.style.display = 'block';
+  cont.innerHTML = `<div class="info-card">
+    <div class="info-tipo-badge" style="background:${color}22;color:${color};border:1px solid ${color}44">
+      <span style="width:7px;height:7px;border-radius:50%;background:${color};display:inline-block"></span>
+      ${tipo}
+    </div>
+    <div class="info-nombre">${props['nombre']}</div>
+    <div class="info-region">${props['region']} · ${props['empresa']}</div>
+    <span class="estado-badge ${estadoClass(props['estado'])}">${props['estado']}</span>
+    <div class="info-desc">${props['descripcion'] || ''}</div>
+    <div class="bars-title">Potencial energético (MW)</div>
+    ${bar('Potencial bruto',    bruto,    0.35)}
+    ${bar('Potencial técnico',  tecnico,  0.65)}
+    ${bar('Potencial económico',economico,1.0 )}
+    ${extraHTML}
+  </div>`;
+}
+
+// ── TOGGLE CAPAS ─────────────────────────────────────
+function toggleLayer(btn) {
+  const key = btn.dataset.layer;
+  const visible = erncLayers[key].getVisible();
+  erncLayers[key].setVisible(!visible);
+  btn.classList.toggle('active',   !visible);
+  btn.classList.toggle('inactive',  visible);
+  btn.querySelector('.lcheck').textContent = visible ? '' : '✓';
+}
+
+// ── CAMBIO BASEMAP ───────────────────────────────────
+function setBasemap(key, btn) {
+  Object.keys(basemapMap).forEach(k => basemapMap[k].setVisible(k === key));
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+</script>
+</body>
+</html>
